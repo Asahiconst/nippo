@@ -9,7 +9,7 @@
 <body>
 <div id="loading"><div class="spinner"></div></div>
 <div id="header-area"></div>
-<div id="contents" style="max-width:1180px; margin:0 auto;">
+<div id="contents">
   <button class="btn-back" id="detail-back" style="margin-bottom:14px;">＜ 戻る</button>
   <h2 class="page-title" id="detail-title"></h2>
   <div id="detail-container"></div>
@@ -29,6 +29,11 @@
   const navKey = scope === 'mine' ? 'top' : type;
   const user = await App.requireAuth(navKey);
   if (!user) return;
+
+  // 現場管理日報・業務改善日報の一覧は画面幅いっぱいまで使って見やすくする
+  if (type === 'genba' || type === 'gyoumu') {
+    document.getElementById('contents').style.maxWidth = '96vw';
+  }
 
   App.loading(true);
   try {
