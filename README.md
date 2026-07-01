@@ -28,8 +28,11 @@ npx wrangler r2 bucket create nippo-genba-images
 ```
 
 ## デプロイ
+本番URL: https://asahi-nippo.pages.dev
+（旧URL https://nippo-b6f.pages.dev も同じD1/R2を参照する別プロジェクトとして残しています）
+
 ```bash
-npx wrangler pages deploy public --project-name=nippo
+npx wrangler pages deploy public --project-name=asahi-nippo --branch=main
 ```
 
 ## ローカル開発

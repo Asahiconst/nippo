@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler pages dev public",
-    "deploy": "wrangler pages deploy public --project-name=nippo",
+    "deploy": "wrangler pages deploy public --project-name=asahi-nippo --branch=main",
     "migrate": "node scripts/migrate.mjs"
   },
   "devDependencies": {
