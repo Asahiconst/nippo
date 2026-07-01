@@ -5,7 +5,7 @@ pages_build_output_dir = "public"
 [[d1_databases]]
 binding = "DB"
 database_name = "nippo-db"
-database_id = "REPLACE_WITH_D1_ID"
+database_id = "47ce2008-ae1e-4301-b3dd-5aff00404122"
 
 [[r2_buckets]]
 binding = "IMAGES"

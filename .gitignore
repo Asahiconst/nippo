@@ -3,3 +3,4 @@ node_modules/
 migration.sql
 *.log
 日報システム.xlsx
+.claude/

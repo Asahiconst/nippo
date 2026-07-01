@@ -46,7 +46,7 @@ for (let i = 0; i < users.length; i++) {
   const [id, pass, role, name, busho] = users[i];
   const hash = await hashPassword(String(pass));
   out.push(
-    `INSERT INTO users (id, password_hash, role, name, busho, sort_order) VALUES (${esc(id)}, ${esc(hash)}, ${esc(role || '一般ユーザー')}, ${esc(name || '')}, ${esc(busho || '')}, ${i});`
+    `INSERT OR REPLACE INTO users (id, password_hash, role, name, busho, sort_order) VALUES (${esc(id)}, ${esc(hash)}, ${esc(role || '一般ユーザー')}, ${esc(name || '')}, ${esc(busho || '')}, ${i});`
   );
   userCount++;
 }
@@ -58,7 +58,7 @@ for (const r of gyoumu) {
   const [empId, date, name, busho, ...fields] = r;
   const cols = ['emp_id', 'date_key', 'name', 'busho', ...GYOUMU_COLS];
   const vals = [esc(empId), esc(dateKey(date)), esc(name || ''), esc(busho || ''), ...GYOUMU_COLS.map((c, i) => esc(fields[i] ?? ''))];
-  out.push(`INSERT INTO gyoumu_reports (${cols.join(',')}) VALUES (${vals.join(',')});`);
+  out.push(`INSERT OR REPLACE INTO gyoumu_reports (${cols.join(',')}) VALUES (${vals.join(',')});`);
 }
 
 // ===== G-POP =====
@@ -66,7 +66,7 @@ const gpop = sheet('G-POP').slice(1).filter(r => r[0] !== '' && r[0] != null);
 for (const r of gpop) {
   const [empId, date, name, busho, goal, pre, on_, post, nextPre] = r;
   out.push(
-    `INSERT INTO gpop_reports (emp_id, date_key, name, busho, goal, pre, on_field, post, next_pre) VALUES (${esc(empId)}, ${esc(dateKey(date))}, ${esc(name || '')}, ${esc(busho || '')}, ${esc(goal || '')}, ${esc(pre || '')}, ${esc(on_ || '')}, ${esc(post || '')}, ${esc(nextPre || '')});`
+    `INSERT OR REPLACE INTO gpop_reports (emp_id, date_key, name, busho, goal, pre, on_field, post, next_pre) VALUES (${esc(empId)}, ${esc(dateKey(date))}, ${esc(name || '')}, ${esc(busho || '')}, ${esc(goal || '')}, ${esc(pre || '')}, ${esc(on_ || '')}, ${esc(post || '')}, ${esc(nextPre || '')});`
   );
 }
 
@@ -101,7 +101,7 @@ const shukkan = sheet('出勤簿').slice(1).filter(r => r[0] !== '' && r[0] != n
 for (const r of shukkan) {
   const [empId, name, ym, date, time, hours, genba_, zan, shinya, car, dist, biko] = r;
   out.push(
-    `INSERT INTO shukkan_entries (emp_id, name, year_month, date_key, time, hours, genba, zangyo, shinya, car, dist, biko) VALUES (${esc(empId)}, ${esc(name || '')}, ${esc(ymKey(ym))}, ${esc(dateKey(date))}, ${esc(time || '')}, ${esc(hours || '')}, ${esc(genba_ || '')}, ${esc(zan || '')}, ${esc(shinya || '')}, ${esc(car || '')}, ${esc(dist || '')}, ${esc(biko || '')});`
+    `INSERT OR REPLACE INTO shukkan_entries (emp_id, name, year_month, date_key, time, hours, genba, zangyo, shinya, car, dist, biko) VALUES (${esc(empId)}, ${esc(name || '')}, ${esc(ymKey(ym))}, ${esc(dateKey(date))}, ${esc(time || '')}, ${esc(hours || '')}, ${esc(genba_ || '')}, ${esc(zan || '')}, ${esc(shinya || '')}, ${esc(car || '')}, ${esc(dist || '')}, ${esc(biko || '')});`
   );
 }
 
@@ -110,7 +110,7 @@ const unten = sheet('運転日報').slice(1).filter(r => r[0] !== '' && r[0] != 
 for (const r of unten) {
   const [empId, name, ym, date, memo, distance, remarks] = r;
   out.push(
-    `INSERT INTO unten_entries (emp_id, name, year_month, date_key, memo, distance, remarks) VALUES (${esc(empId)}, ${esc(name || '')}, ${esc(ymKey(ym))}, ${esc(dateKey(date))}, ${esc(memo || '')}, ${esc(distance || '')}, ${esc(remarks || '')});`
+    `INSERT OR REPLACE INTO unten_entries (emp_id, name, year_month, date_key, memo, distance, remarks) VALUES (${esc(empId)}, ${esc(name || '')}, ${esc(ymKey(ym))}, ${esc(dateKey(date))}, ${esc(memo || '')}, ${esc(distance || '')}, ${esc(remarks || '')});`
   );
 }
 
