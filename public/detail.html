@@ -80,12 +80,18 @@
       renderItems(c, items, label);
     } else {
       const endpoint = type === 'gyoumu' ? 'gyoumu/by-date' : 'gpop/by-date';
-      const subs = await App.api(`${endpoint}?date=${date}`);
+      let subs = await App.api(`${endpoint}?date=${date}`);
       if (subs[0]) label = subs[0].dateLabel;
       const byId = {};
       subs.forEach(s => { if (!byId[s.empId]) byId[s.empId] = s; });
       let allUsers = [];
       try { allUsers = await App.api('users'); } catch (e) {}
+      // 業務改善日報の全社員一覧には表示しないユーザー
+      const HIDDEN_IDS = type === 'gyoumu' ? ['asahi00'] : [];
+      if (HIDDEN_IDS.length) {
+        allUsers = allUsers.filter(u => !HIDDEN_IDS.includes(u.id));
+        subs = subs.filter(s => !HIDDEN_IDS.includes(s.empId));
+      }
       if (allUsers.length) {
         items = allUsers.map(u => ({ name: u.name, busho: u.busho, record: byId[u.id] || null }));
         subs.forEach(s => { if (!allUsers.some(u => u.id === s.empId)) items.push({ name: s.name, busho: s.busho, record: s }); });
