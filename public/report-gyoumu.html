@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>業務改善日報 - 日報システム</title>
+<link rel="stylesheet" href="/shared/style.css">
+</head>
+<body>
+<div id="loading"><div class="spinner"></div></div>
+<div id="header-area"></div>
+<div id="contents">
+<section id="view-create">
+  <div class="kz-wrap">
+    <div class="kz-titlebar">業務改善日報更新</div>
+    <div class="err" id="create-err" style="padding:0 4px;"></div>
+    <table class="kz-tbl">
+      <tr><td class="lbl">記録者 / 所属</td><td class="val"><span class="kz-plain" id="create-rec"></span></td></tr>
+      <tr><td class="lbl">記録日</td><td class="val"><input type="date" id="create-date"></td></tr>
+      <tr>
+        <td class="lbl">業務・実績</td>
+        <td class="val"><div class="kz-two">
+          <div class="wide"><p class="kz-sub">本日の主な業務</p><textarea class="h1" id="cf-mainWork"></textarea></div>
+          <div class="narrow"><p class="kz-sub">実績（数字）</p><textarea class="h1" id="cf-results"></textarea></div>
+        </div></td>
+      </tr>
+      <tr>
+        <td class="lbl">本日の成果<br>（テレワーク勤務<br>者のみ記入）</td>
+        <td class="val"><div class="kz-two">
+          <div class="wide"><p class="kz-sub">本日の成果</p><textarea class="h1" id="cf-achievement"></textarea></div>
+          <div class="narrow"><p class="kz-sub">成果達成に使った時間</p><textarea class="h1" id="cf-timeUsed"></textarea></div>
+        </div></td>
+      </tr>
+      <tr><td class="lbl">成果達成のために<br>何をしたか<br>どのように成果を<br>達成したか<br>（テレワーク勤務<br>者のみ記入）</td><td class="val"><textarea class="h2" id="cf-howAchieved"></textarea></td></tr>
+      <tr><td class="lbl">緊急で重要</td><td class="val"><textarea class="h2" id="cf-urgentImportant"></textarea></td></tr>
+      <tr><td class="lbl">緊急でなく重要</td><td class="val"><textarea class="h2" id="cf-notUrgentImportant"></textarea></td></tr>
+      <tr><td class="lbl">報・連・相事項<br>(5W1H)</td><td class="val"><textarea class="h2" id="cf-horenso"></textarea></td></tr>
+      <tr><td class="lbl">自己効力感<br>一番頑張ったこと</td><td class="val"><textarea class="h2" id="cf-bestEffort"></textarea></td></tr>
+      <tr><td class="lbl">自己肯定感<br>本日、他者から<br>もらった<br>「ありがとう」</td><td class="val"><textarea class="h2" id="cf-thanks"></textarea></td></tr>
+      <tr><td class="lbl">所感</td><td class="val"><textarea class="h2" id="cf-impression"></textarea></td></tr>
+    </table>
+    <div class="kz-submit-wrap"><button class="btn-kz" id="btn-save">更 新</button></div>
+    <div style="text-align:center; margin-top:12px;"><button class="btn-back" onclick="location.href='/top.html'">＜ トップに戻る</button></div>
+  </div>
+</section>
+</div>
+<script src="/shared/app.js"></script>
+<script>
+(async function () {
+  const user = await App.requireAuth('gyoumu');
+  if (!user) return;
+
+  const GYOUMU_FIELDS = ['mainWork', 'results', 'achievement', 'timeUsed', 'howAchieved',
+    'urgentImportant', 'notUrgentImportant', 'horenso', 'bestEffort', 'thanks', 'impression'];
+
+  const dateParam = App.getParam('date');
+  const copyFrom = App.getParam('copyFrom');
+  document.getElementById('create-rec').textContent = `${user.name}/${user.busho}`;
+  document.getElementById('create-date').value = dateParam || App.todayKey();
+
+  let prefill = null;
+  const sourceDate = dateParam || copyFrom;
+  if (sourceDate) {
+    App.loading(true);
+    try {
+      const list = await App.api(`gyoumu/mine?empId=${encodeURIComponent(user.id)}&date=${sourceDate}`);
+      prefill = list[0] || null;
+    } finally { App.loading(false); }
+  }
+
+  GYOUMU_FIELDS.forEach(k => {
+    const el = document.getElementById('cf-' + k);
+    el.value = (prefill && prefill[k]) ? prefill[k] : '';
+    App.autoGrow(el);
+  });
+  if (!prefill) {
+    document.getElementById('cf-mainWork').value = '08:00〜10:00　\n10:00〜12:00　\n13:00〜15:00　\n15:00〜17:00　';
+  }
+
+  document.getElementById('btn-save').addEventListener('click', async () => {
+    const dateKey = document.getElementById('create-date').value;
+    const errEl = document.getElementById('create-err');
+    if (!dateKey) { errEl.textContent = '記録日を入力してください。'; return; }
+    const fields = {};
+    GYOUMU_FIELDS.forEach(k => { fields[k] = document.getElementById('cf-' + k).value; });
+    App.loading(true);
+    try {
+      const res = await App.api('gyoumu', { method: 'POST', body: { dateKey, fields } });
+      if (res.success) location.href = '/top.html';
+      else errEl.textContent = res.message || '保存に失敗しました。';
+    } catch (e) {
+      errEl.textContent = '通信エラーが発生しました。';
+    } finally { App.loading(false); }
+  });
+})();
+</script>
+</body>
+</html>

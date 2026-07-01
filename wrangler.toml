@@ -1,0 +1,12 @@
+name = "nippo"
+compatibility_date = "2024-09-23"
+pages_build_output_dir = "public"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "nippo-db"
+database_id = "REPLACE_WITH_D1_ID"
+
+[[r2_buckets]]
+binding = "IMAGES"
+bucket_name = "nippo-genba-images"

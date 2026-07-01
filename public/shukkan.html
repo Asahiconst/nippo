@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>出勤簿 - 日報システム</title>
+<link rel="stylesheet" href="/shared/style.css">
+</head>
+<body>
+<div id="loading"><div class="spinner"></div></div>
+<div id="header-area"></div>
+<div id="contents">
+<section id="view-shukkan">
+  <div class="shukkan-head">
+    <button class="btn-shukkan-o" onclick="location.href='/top.html'">＜ トップに戻る</button>
+    <div class="shukkan-period"><span id="shukkan-title"></span><small id="shukkan-range"></small></div>
+    <button class="btn-shukkan" id="btn-save">登録する</button>
+  </div>
+  <div class="shukkan-head" style="margin-top:-4px;">
+    <button class="btn-shukkan-o" id="btn-prev">前月分</button>
+    <div style="flex:1;"></div>
+    <button class="btn-shukkan-o" id="btn-next">次月分</button>
+  </div>
+  <div class="shukkan-scroll">
+    <table class="shukkan">
+      <thead>
+        <tr>
+          <th style="width:30px;">月</th><th style="width:30px;">日</th><th style="width:38px;">曜日</th>
+          <th style="width:110px;">出勤時間</th><th style="width:60px;">労働時間</th><th style="width:120px;">現場名</th>
+          <th style="width:110px;">残業時間</th><th style="width:110px;">深夜残業</th><th style="width:80px;">通勤車両</th>
+          <th style="width:70px;">自宅から<br>現場までの<br>距離</th><th style="width:120px;">備考</th>
+        </tr>
+        <tr class="ex">
+          <td colspan="3">記入例</td><td>8:00～17:00</td><td>7.50</td><td>某平法面</td>
+          <td>18:00～22:00</td><td>22:00～23:00</td><td>自/リース</td><td>45km</td><td></td>
+        </tr>
+      </thead>
+      <tbody id="shukkan-body"></tbody>
+      <tfoot>
+        <tr>
+          <td colspan="3">合計</td>
+          <td><span id="sh-days">0.0</span></td>
+          <td><span id="sh-hours">0.00</span><br><span class="unit">(時間)</span></td>
+          <td colspan="6"></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+  <div class="shukkan-head" style="margin-top:18px;">
+    <button class="btn-shukkan-o" onclick="location.href='/top.html'">＜ トップに戻る</button>
+    <div style="flex:1;"></div>
+    <button class="btn-shukkan" id="btn-save2">登録する</button>
+  </div>
+</section>
+</div>
+<script src="/shared/app.js"></script>
+<script src="/shared/holidays.js"></script>
+<script src="/shared/grid.js"></script>
+<script>
+(async function () {
+  const user = await App.requireAuth('shukkan');
+  if (!user) return;
+  const specialMap = await HolidayUtil.loadSpecialMap();
+
+  const now = new Date();
+  const ymParam = App.getParam('ym');
+  let year = ymParam ? Number(ymParam.split('-')[0]) : now.getFullYear();
+  let month = ymParam ? Number(ymParam.split('-')[1]) : (now.getMonth() + 1);
+
+  const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
+
+  document.getElementById('btn-prev').addEventListener('click', () => changeMonth(-1));
+  document.getElementById('btn-next').addEventListener('click', () => changeMonth(1));
+  document.getElementById('btn-save').addEventListener('click', save);
+  document.getElementById('btn-save2').addEventListener('click', save);
+
+  async function changeMonth(diff) {
+    month += diff;
+    if (month > 12) { month = 1; year++; } else if (month < 1) { month = 12; year--; }
+    await render();
+  }
+
+  function ym() { return `${year}-${String(month).padStart(2, '0')}`; }
+
+  async function render() {
+    const start = new Date(year, month - 2, 16);
+    const end = new Date(year, month - 1, 15);
+    document.getElementById('shukkan-title').textContent = `${year}年${month}月分`;
+    document.getElementById('shukkan-range').textContent =
+      `${start.getMonth() + 1}月${start.getDate()}日 ～ ${end.getMonth() + 1}月${end.getDate()}日`;
+
+    let html = '';
+    const cur = new Date(start);
+    let ri = 0;
+    while (cur <= end) {
+      const m = cur.getMonth() + 1, d = cur.getDate(), dow = cur.getDay();
+      const dateKey = `${cur.getFullYear()}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const sun = (dow === 0 || HolidayUtil.isHoliday(dateKey, specialMap));
+      const pto = HolidayUtil.isPto(dateKey, specialMap);
+      const rowCls = sun ? 'row-sun' : (dow === 6 ? 'row-sat' : (pto ? 'row-pto' : ''));
+      const dCls = sun ? 'day-sun' : (dow === 6 ? 'day-sat' : '');
+      const wCls = sun ? 'dow-sun' : (dow === 6 ? 'dow-sat' : '');
+      html += `<tr class="${rowCls}" data-date="${dateKey}">`
+        + `<td>${m}</td><td class="${dCls}">${d}</td><td class="${wCls}">${DAY_NAMES[dow]}</td>`
+        + `<td><input type="text" data-col="time" data-row="${ri}" class="sh-time"></td>`
+        + `<td><input type="number" data-col="hours" data-row="${ri}" class="sh-hours" step="0.25"></td>`
+        + `<td><input type="text" data-col="genba" data-row="${ri}" class="txt-l sh-genba"></td>`
+        + `<td><input type="text" data-col="zan" data-row="${ri}" class="sh-zan"></td>`
+        + `<td><input type="text" data-col="shinya" data-row="${ri}" class="sh-shinya"></td>`
+        + `<td><input type="text" data-col="car" data-row="${ri}" class="sh-car"></td>`
+        + `<td><input type="text" data-col="dist" data-row="${ri}" class="sh-dist km-field" inputmode="decimal"></td>`
+        + `<td><input type="text" data-col="biko" data-row="${ri}" class="txt-l sh-biko"></td>`
+        + `</tr>`;
+      cur.setDate(cur.getDate() + 1);
+      ri++;
+    }
+    const body = document.getElementById('shukkan-body');
+    body.innerHTML = html;
+    GridUtil.init('shukkan-body');
+    GridUtil.lock(body);
+    applyHolidayHints(body);
+    body.addEventListener('input', (e) => { if (e.target.classList.contains('sh-hours')) shukkanTotal(); });
+    shukkanTotal();
+    await loadData();
+  }
+
+  function applyHolidayHints(body) {
+    body.querySelectorAll('tr').forEach(tr => {
+      const dk = tr.getAttribute('data-date');
+      const b = tr.querySelector('.sh-biko');
+      if (dk && b) { const hn = HolidayUtil.name(dk, specialMap); if (hn) b.placeholder = hn; }
+    });
+  }
+
+  async function loadData() {
+    try {
+      const rows = await App.api(`shukkan?empId=${encodeURIComponent(user.id)}&ym=${ym()}`);
+      const map = {};
+      rows.forEach(r => { map[r.date] = r; });
+      document.querySelectorAll('#shukkan-body tr').forEach(tr => {
+        const r = map[tr.getAttribute('data-date')];
+        if (!r) return;
+        tr.querySelector('.sh-time').value = r.time || '';
+        tr.querySelector('.sh-hours').value = r.hours || '';
+        tr.querySelector('.sh-genba').value = r.genba || '';
+        tr.querySelector('.sh-zan').value = r.zan || '';
+        tr.querySelector('.sh-shinya').value = r.shinya || '';
+        tr.querySelector('.sh-car').value = r.car || '';
+        tr.querySelector('.sh-dist').value = r.dist || '';
+        tr.querySelector('.sh-biko').value = r.biko || '';
+      });
+      shukkanTotal();
+    } catch (e) {}
+  }
+
+  function shukkanTotal() {
+    let total = 0, days = 0;
+    document.querySelectorAll('#shukkan-body .sh-hours').forEach(inp => {
+      const v = parseFloat(inp.value);
+      if (!isNaN(v) && v > 0) { total += v; days++; }
+    });
+    document.getElementById('sh-days').textContent = days.toFixed(1);
+    document.getElementById('sh-hours').textContent = total.toFixed(2);
+  }
+
+  async function save() {
+    const rows = [];
+    document.querySelectorAll('#shukkan-body tr').forEach(tr => {
+      const v = {
+        time: tr.querySelector('.sh-time').value, hours: tr.querySelector('.sh-hours').value,
+        genba: tr.querySelector('.sh-genba').value, zan: tr.querySelector('.sh-zan').value,
+        shinya: tr.querySelector('.sh-shinya').value, car: tr.querySelector('.sh-car').value,
+        dist: tr.querySelector('.sh-dist').value, biko: tr.querySelector('.sh-biko').value
+      };
+      if (v.time || v.hours || v.genba || v.zan || v.shinya || v.car || v.dist || v.biko) {
+        v.date = tr.getAttribute('data-date');
+        rows.push(v);
+      }
+    });
+    App.loading(true);
+    try {
+      const res = await App.api('shukkan', { method: 'POST', body: { yearMonth: ym(), rows } });
+      if (res.success) App.toast('保存しました。');
+      else alert('保存に失敗しました：' + (res.message || '不明'));
+    } catch (e) {
+      alert('通信エラーが発生しました。');
+    } finally { App.loading(false); }
+  }
+
+  await render();
+})();
+</script>
+</body>
+</html>

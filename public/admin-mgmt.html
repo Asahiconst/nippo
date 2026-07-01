@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>出勤簿・運転日報管理 - 日報システム</title>
+<link rel="stylesheet" href="/shared/style.css">
+</head>
+<body>
+<div id="loading"><div class="spinner"></div></div>
+<div id="header-area"></div>
+<div id="contents">
+<section id="view-mgmt">
+  <h2 class="page-title" id="mgmt-title">出勤簿管理</h2>
+  <div style="margin-bottom:14px;"><button class="btn-back" onclick="location.href='/admin.html'">＜ 管理者メニュー</button></div>
+  <div class="mgmt-controls">
+    <div class="form-group" style="max-width:220px;"><label>集計月</label><input type="month" id="mgmt-month"></div>
+    <div class="mgmt-select-row">
+      <div class="mgmt-emps">
+        <div style="font-weight:bold;margin-bottom:8px;">対象社員
+          <button class="btn-mini" id="btn-sel-all">全選択</button>
+          <button class="btn-mini" id="btn-sel-none">全解除</button>
+        </div>
+        <div id="mgmt-emp-list" class="mgmt-emp-list"></div>
+      </div>
+      <div id="mgmt-unsub-panel" class="mgmt-unsub-panel" style="display:none;"></div>
+    </div>
+    <div style="margin-top:14px;">
+      <button class="btn" id="btn-confirm">確認する</button>
+      <button class="btn" id="mgmt-pdf-btn" style="display:none; background:#e53935; margin-left:8px;">PDF出力</button>
+    </div>
+  </div>
+  <div id="mgmt-result" style="margin-top:24px;"></div>
+  <button id="mgmt-saveall" class="mgmt-saveall-btn" style="display:none;">すべて保存</button>
+</section>
+</div>
+<div id="print-area"></div>
+<script src="/shared/app.js"></script>
+<script src="/shared/holidays.js"></script>
+<script src="/shared/grid.js"></script>
+<script>
+(async function () {
+  const user = await App.requireAuth('admin', { adminOnly: true });
+  if (!user) return;
+  const esc = App.escapeHtml;
+  const specialMap = await HolidayUtil.loadSpecialMap();
+
+  const mgmtType = App.getParam('type') === 'unten' ? 'unten' : 'shukkan';
+  document.getElementById('mgmt-title').textContent = mgmtType === 'shukkan' ? '出勤簿管理' : '運転日報管理';
+
+  let allUsers = [];
+  let mgmtLast = null;
+
+  const now = new Date();
+  document.getElementById('mgmt-month').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  App.loading(true);
+  try {
+    allUsers = await App.api('users');
+    const sel = await App.api(`mgmt-selection?type=${mgmtType}`);
+    document.getElementById('mgmt-emp-list').innerHTML = allUsers.map(u => {
+      const checked = !sel ? true : sel.indexOf(String(u.id)) >= 0;
+      return `<label><input type="checkbox" class="mgmt-emp" value="${esc(u.id)}" ${checked ? 'checked' : ''}> ${esc(u.name)}（${esc(u.busho)}）</label>`;
+    }).join('');
+  } finally { App.loading(false); }
+
+  document.getElementById('btn-sel-all').addEventListener('click', () => toggleAll(true));
+  document.getElementById('btn-sel-none').addEventListener('click', () => toggleAll(false));
+  function toggleAll(check) { document.querySelectorAll('#mgmt-emp-list .mgmt-emp').forEach(c => { c.checked = check; }); }
+  function selectedIds() { return Array.prototype.slice.call(document.querySelectorAll('#mgmt-emp-list .mgmt-emp:checked')).map(c => c.value); }
+
+  document.getElementById('btn-confirm').addEventListener('click', confirm_);
+  document.getElementById('mgmt-pdf-btn').addEventListener('click', printPdf);
+  document.getElementById('mgmt-saveall').addEventListener('click', saveAll);
+
+  async function confirm_() {
+    const ym = document.getElementById('mgmt-month').value;
+    if (!ym) { alert('集計月を選択してください。'); return; }
+    const ids = selectedIds();
+    if (!ids.length) { alert('対象社員を1名以上選択してください。'); return; }
+    App.api('mgmt-selection', { method: 'POST', body: { type: mgmtType, ids } }).catch(() => {});
+    App.loading(true);
+    try {
+      const rows = await App.api(`${mgmtType}/all?ym=${ym}`);
+      const byEmp = {};
+      rows.forEach(r => { (byEmp[r.empId] = byEmp[r.empId] || []).push(r); });
+      const emps = allUsers.filter(u => ids.indexOf(String(u.id)) >= 0);
+      mgmtLast = { type: mgmtType, ym, byEmp, emps };
+      renderResult();
+      document.getElementById('mgmt-pdf-btn').style.display = '';
+    } catch (e) {
+      alert('取得に失敗しました。');
+    } finally { App.loading(false); }
+  }
+
+  const MGMT_DN = ['日', '月', '火', '水', '木', '金', '土'];
+  function dow(dk) { const p = dk.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]).getDay(); }
+  function dc(dk) { const w = dow(dk); return (w === 0 || HolidayUtil.isHoliday(dk, specialMap)) ? 'sun' : (w === 6 ? 'sat' : ''); }
+  function rowCls(dk) { const c = dc(dk); return c === 'sun' ? 'mrow-sun' : (c === 'sat' ? 'mrow-sat' : (HolidayUtil.isPto(dk, specialMap) ? 'mrow-pto' : '')); }
+  function dLabel(dk) { const p = dk.split('-'); return `${+p[1]}/${+p[2]}（${MGMT_DN[dow(dk)]}）`; }
+  function ymLabel(ym) { const p = ym.split('-'); return `${p[0]}年${+p[1]}月分`; }
+
+  function periodDates(type, ym) {
+    const p = ym.split('-'), y = +p[0], m = +p[1];
+    const start = type === 'shukkan' ? new Date(y, m - 2, 16) : new Date(y, m - 1, 1);
+    const end = type === 'shukkan' ? new Date(y, m - 1, 15) : new Date(y, m, 0);
+    const out = []; const cur = new Date(start);
+    while (cur <= end) { out.push(`${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}-${String(cur.getDate()).padStart(2, '0')}`); cur.setDate(cur.getDate() + 1); }
+    return out;
+  }
+
+  const MGMT_COLS = {
+    shukkan: [['出勤時間', 'time', 'text'], ['労働時間', 'hours', 'number'], ['現場名', 'genba', 'text'], ['残業時間', 'zan', 'text'], ['深夜残業', 'shinya', 'text'], ['通勤車両', 'car', 'text'], ['自宅から現場までの距離', 'dist', 'text'], ['備考', 'biko', 'text']],
+    unten: [['行先・運転記録', 'memo', 'text'], ['距離(km)', 'distance', 'number'], ['備考', 'remarks', 'text']]
+  };
+
+  function editTableHtml(type, empId, byDate, dates) {
+    const cols = MGMT_COLS[type];
+    const thead = '<tr><th style="width:90px;">日付</th>' + cols.map(c => `<th>${c[0]}</th>`).join('') + '</tr>';
+    const body = dates.map((dk, ri) => {
+      const r = byDate[dk] || {};
+      const tds = cols.map(c => {
+        const v = r[c[1]] != null ? r[c[1]] : '';
+        const isKm = (c[1] === 'dist' || c[1] === 'distance');
+        const t = (c[2] === 'number' && !isKm) ? ' type="number" step="0.1"' : ' type="text"';
+        const kmCls = isKm ? ' km-field' : '';
+        return `<td><input class="me${kmCls}"${t} data-emp="${esc(empId)}" data-date="${dk}" data-f="${c[1]}" data-col="${c[1]}" data-row="${ri}" value="${esc(v)}"></td>`;
+      }).join('');
+      return `<tr class="${rowCls(dk)}"><td class="${dc(dk)}">${dLabel(dk)}</td>${tds}</tr>`;
+    }).join('');
+    return `<table class="mgmt-tbl mgmt-edit"><thead>${thead}</thead><tbody id="mgrid-${esc(empId)}">${body}</tbody>`
+      + `<tfoot><tr><th>合計</th><th id="mtot-${esc(empId)}" colspan="${cols.length}" style="text-align:right;"></th></tr></tfoot></table>`;
+  }
+
+  function byDateMap(rows) { const m = {}; (rows || []).forEach(r => { m[r.date] = r; }); return m; }
+
+  function collectEmpRows(empId) {
+    const map = {};
+    document.querySelectorAll(`#mgmt-result .me[data-emp="${CSS.escape(String(empId))}"]`).forEach(inp => {
+      const dk = inp.getAttribute('data-date'), f = inp.getAttribute('data-f');
+      (map[dk] = map[dk] || { date: dk })[f] = inp.value;
+    });
+    return map;
+  }
+  function recalc(empId) {
+    const d = mgmtLast; const fkey = d.type === 'shukkan' ? 'hours' : 'distance';
+    let sum = 0;
+    document.querySelectorAll(`#mgmt-result .me[data-emp="${CSS.escape(String(empId))}"][data-f="${fkey}"]`).forEach(inp => {
+      const v = parseFloat(inp.value); if (!isNaN(v)) sum += v;
+    });
+    const el = document.getElementById('mtot-' + empId);
+    if (el) el.textContent = '合計：' + (d.type === 'shukkan' ? sum.toFixed(2) + ' 時間' : (Math.round(sum * 100) / 100) + ' km');
+  }
+
+  function renderResult() {
+    const d = mgmtLast;
+    const dates = periodDates(d.type, d.ym);
+    const notSubmitted = allUsers.filter(u => { const rows = d.byEmp[u.id]; return !rows || !rows.length; });
+    const panel = document.getElementById('mgmt-unsub-panel');
+    if (notSubmitted.length) {
+      panel.className = 'mgmt-unsub-panel';
+      panel.innerHTML = `<div class="up-head">未提出者（${notSubmitted.length}名）</div>`
+        + `<ul class="up-list">${notSubmitted.map(u => `<li>${esc(u.name)}<span>（${esc(u.busho)}）</span></li>`).join('')}</ul>`;
+    } else {
+      panel.className = 'mgmt-unsub-panel ok';
+      panel.innerHTML = '<div class="up-head">提出状況</div><div style="padding:8px 10px;">全社員が提出済みです。</div>';
+    }
+    panel.style.display = '';
+
+    let html = `<h3>${d.type === 'shukkan' ? '出勤簿' : '運転日報'}　${esc(ymLabel(d.ym))}　<span style="font-size:13px;color:#777;">（管理者は内容を編集して右下の「すべて保存」で保存できます）</span></h3>`;
+    html += d.emps.map(u =>
+      `<div class="mgmt-emp-block"><div class="mgmt-emp-head">${esc(u.name)}（${esc(u.busho)}）　社員ID：${esc(u.id)}</div>`
+      + editTableHtml(d.type, u.id, byDateMap(d.byEmp[u.id]), dates) + '</div>'
+    ).join('');
+    const resultEl = document.getElementById('mgmt-result');
+    resultEl.innerHTML = html;
+    GridUtil.init('mgmt-result');
+    GridUtil.lock(resultEl);
+    // 祝日名を備考欄のプレースホルダーに
+    resultEl.querySelectorAll('input[data-f="biko"], input[data-f="remarks"]').forEach(inp => {
+      const dk = inp.getAttribute('data-date');
+      const hn = HolidayUtil.name(dk, specialMap);
+      if (hn) inp.placeholder = hn;
+    });
+    resultEl.addEventListener('input', (e) => { if (e.target.classList.contains('me')) recalc(e.target.dataset.emp); });
+    d.emps.forEach(u => recalc(u.id));
+    document.getElementById('mgmt-saveall').style.display = '';
+  }
+
+  async function saveAll() {
+    const d = mgmtLast; if (!d) return;
+    const btn = document.getElementById('mgmt-saveall');
+    const endpoint = d.type;
+    btn.disabled = true; btn.textContent = '保存中...';
+    App.loading(true);
+    try {
+      for (const u of d.emps) {
+        const map = collectEmpRows(u.id);
+        const rows = Object.keys(map).map(dk => map[dk]).filter(r => Object.keys(r).some(k => k !== 'date' && r[k]));
+        d.byEmp[u.id] = rows;
+        const res = await App.api(endpoint, { method: 'POST', body: { empId: u.id, name: u.name, yearMonth: d.ym, rows } });
+        if (!res.success) throw new Error(u.name);
+      }
+      btn.textContent = '保存しました';
+      setTimeout(() => { btn.textContent = 'すべて保存'; }, 1500);
+    } catch (e) {
+      alert('保存中にエラーが発生しました（' + (e.message || '') + '）。');
+      btn.textContent = 'すべて保存';
+    } finally {
+      btn.disabled = false;
+      App.loading(false);
+    }
+  }
+
+  function readonlyTableHtml(type, byDate, dates) {
+    const cols = MGMT_COLS[type];
+    const thead = '<tr><th>日付</th>' + cols.map(c => `<th>${c[0]}</th>`).join('') + '</tr>';
+    const fkey = type === 'shukkan' ? 'hours' : 'distance';
+    let sum = 0;
+    const body = dates.map(dk => {
+      const r = byDate[dk] || {};
+      const hn = HolidayUtil.name(dk, specialMap);
+      const tds = cols.map(c => {
+        let v = r[c[1]] != null ? r[c[1]] : '';
+        if (c[1] === fkey) { const n = parseFloat(v); if (!isNaN(n)) sum += n; }
+        if ((c[1] === 'biko' || c[1] === 'remarks') && !v && hn) v = hn;
+        return `<td>${esc(v)}</td>`;
+      }).join('');
+      return `<tr class="${rowCls(dk)}"><td class="${dc(dk)}">${dLabel(dk)}</td>${tds}</tr>`;
+    }).join('');
+    const totLabel = type === 'shukkan' ? sum.toFixed(2) + ' 時間' : (Math.round(sum * 100) / 100) + ' km';
+    return `<table class="mgmt-tbl"><thead>${thead}</thead><tbody>${body}</tbody>`
+      + `<tfoot><tr><th>合計</th><th colspan="${cols.length}" style="text-align:right;">${totLabel}</th></tr></tfoot></table>`;
+  }
+
+  function printPdf() {
+    if (!mgmtLast) return;
+    const d = mgmtLast; const dates = periodDates(d.type, d.ym);
+    const typeName = d.type === 'shukkan' ? '出勤簿' : '運転日報';
+    const html = d.emps.map(u => {
+      const byDate = collectEmpRows(u.id);
+      return `<div class="print-page">`
+        + `<div class="print-head">旭建設株式会社　${typeName}　${esc(ymLabel(d.ym))}</div>`
+        + `<div class="mgmt-emp-head">${esc(u.name)}（${esc(u.busho)}）　社員ID：${esc(u.id)}</div>`
+        + readonlyTableHtml(d.type, byDate, dates) + '</div>';
+    }).join('');
+    document.getElementById('print-area').innerHTML = html;
+    window.print();
+  }
+})();
+</script>
+</body>
+</html>

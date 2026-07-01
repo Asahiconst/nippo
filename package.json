@@ -1,0 +1,15 @@
+{
+  "name": "nippo",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler pages dev public",
+    "deploy": "wrangler pages deploy public --project-name=nippo",
+    "migrate": "node scripts/migrate.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4.104.0",
+    "xlsx": "^0.18.5"
+  }
+}

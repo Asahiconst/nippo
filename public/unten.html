@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>運転日報 - 日報システム</title>
+<link rel="stylesheet" href="/shared/style.css">
+</head>
+<body>
+<div id="loading"><div class="spinner"></div></div>
+<div id="header-area"></div>
+<div id="contents">
+<section id="view-unten">
+  <div class="unten-bar1">
+    <button class="btn-unten-o" onclick="location.href='/top.html'">＜ トップに戻る</button>
+    <div class="unten-total">合計: <b id="unten-total-km">0</b> km</div>
+    <button class="btn-unten" id="btn-save">登録する</button>
+  </div>
+  <div class="unten-bar2">
+    <button class="btn-unten-o" id="btn-prev">前月</button>
+    <div class="unten-month" id="unten-month"></div>
+    <button class="btn-unten-o" id="btn-next">次月</button>
+  </div>
+  <div class="shukkan-scroll">
+    <table class="shukkan">
+      <thead><tr>
+        <th style="width:30px;">月</th><th style="width:30px;">日</th><th style="width:38px;">曜日</th>
+        <th>行先・運転記録</th><th style="width:110px;">距離(km)</th><th style="width:170px;">備考</th>
+      </tr></thead>
+      <tbody id="unten-body"></tbody>
+      <tfoot><tr><td colspan="4">合計</td><td><span id="unten-total-km2">0</span> km</td><td></td></tr></tfoot>
+    </table>
+  </div>
+  <div class="unten-bar1" style="margin-top:18px;">
+    <button class="btn-unten-o" onclick="location.href='/top.html'">＜ トップに戻る</button>
+    <div class="unten-total">合計: <b id="unten-total-km3">0</b> km</div>
+    <button class="btn-unten" id="btn-save2">登録する</button>
+  </div>
+</section>
+</div>
+<script src="/shared/app.js"></script>
+<script src="/shared/holidays.js"></script>
+<script src="/shared/grid.js"></script>
+<script>
+(async function () {
+  const user = await App.requireAuth('unten');
+  if (!user) return;
+  const specialMap = await HolidayUtil.loadSpecialMap();
+
+  const now = new Date();
+  const ymParam = App.getParam('ym');
+  let year = ymParam ? Number(ymParam.split('-')[0]) : now.getFullYear();
+  let month = ymParam ? Number(ymParam.split('-')[1]) : (now.getMonth() + 1);
+
+  const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
+
+  document.getElementById('btn-prev').addEventListener('click', () => changeMonth(-1));
+  document.getElementById('btn-next').addEventListener('click', () => changeMonth(1));
+  document.getElementById('btn-save').addEventListener('click', save);
+  document.getElementById('btn-save2').addEventListener('click', save);
+
+  async function changeMonth(diff) {
+    month += diff;
+    if (month > 12) { month = 1; year++; } else if (month < 1) { month = 12; year--; }
+    await render();
+  }
+  function ym() { return `${year}-${String(month).padStart(2, '0')}`; }
+
+  async function render() {
+    document.getElementById('unten-month').textContent = `${year}年${month}月`;
+    const daysInMonth = new Date(year, month, 0).getDate();
+    let html = '';
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dow = new Date(year, month - 1, d).getDay();
+      const dk = `${ym()}-${String(d).padStart(2, '0')}`;
+      const sun = (dow === 0 || HolidayUtil.isHoliday(dk, specialMap));
+      const pto = HolidayUtil.isPto(dk, specialMap);
+      const rowCls = sun ? 'row-sun' : (dow === 6 ? 'row-sat' : (pto ? 'row-pto' : ''));
+      const dCls = sun ? 'day-sun' : (dow === 6 ? 'day-sat' : '');
+      const wCls = sun ? 'dow-sun' : (dow === 6 ? 'dow-sat' : '');
+      const ri = d - 1;
+      html += `<tr class="${rowCls}" data-date="${dk}">`
+        + `<td>${month}</td><td class="${dCls}">${d}</td><td class="${wCls}">${DAY_NAMES[dow]}</td>`
+        + `<td><input type="text" data-col="memo" data-row="${ri}" class="txt-l u-memo"></td>`
+        + `<td><input type="text" data-col="distance" data-row="${ri}" class="u-km km-field" inputmode="decimal"></td>`
+        + `<td><input type="text" data-col="remarks" data-row="${ri}" class="txt-l u-remarks"></td>`
+        + `</tr>`;
+    }
+    const body = document.getElementById('unten-body');
+    body.innerHTML = html;
+    GridUtil.init('unten-body');
+    GridUtil.lock(body);
+    applyHolidayHints(body);
+    body.addEventListener('input', (e) => { if (e.target.classList.contains('u-km')) untenTotal(); });
+    untenTotal();
+    await loadData();
+  }
+
+  function applyHolidayHints(body) {
+    body.querySelectorAll('tr').forEach(tr => {
+      const dk = tr.getAttribute('data-date');
+      const b = tr.querySelector('.u-remarks');
+      if (dk && b) { const hn = HolidayUtil.name(dk, specialMap); if (hn) b.placeholder = hn; }
+    });
+  }
+
+  async function loadData() {
+    try {
+      const rows = await App.api(`unten?empId=${encodeURIComponent(user.id)}&ym=${ym()}`);
+      const map = {};
+      rows.forEach(r => { map[r.date] = r; });
+      document.querySelectorAll('#unten-body tr').forEach(tr => {
+        const r = map[tr.getAttribute('data-date')];
+        if (!r) return;
+        tr.querySelector('.u-memo').value = r.memo || '';
+        tr.querySelector('.u-km').value = r.distance || '';
+        tr.querySelector('.u-remarks').value = r.remarks || '';
+      });
+      untenTotal();
+    } catch (e) {}
+  }
+
+  function untenTotal() {
+    let total = 0;
+    document.querySelectorAll('#unten-body .u-km').forEach(inp => {
+      const v = parseFloat(inp.value);
+      if (!isNaN(v)) total += v;
+    });
+    const t = Math.round(total * 100) / 100;
+    document.getElementById('unten-total-km').textContent = t;
+    document.getElementById('unten-total-km2').textContent = t;
+    document.getElementById('unten-total-km3').textContent = t;
+  }
+
+  async function save() {
+    const rows = [];
+    document.querySelectorAll('#unten-body tr').forEach(tr => {
+      const memo = tr.querySelector('.u-memo').value;
+      const km = tr.querySelector('.u-km').value;
+      const rem = tr.querySelector('.u-remarks').value;
+      if (memo || km || rem) rows.push({ date: tr.getAttribute('data-date'), memo, distance: km, remarks: rem });
+    });
+    App.loading(true);
+    try {
+      const res = await App.api('unten', { method: 'POST', body: { yearMonth: ym(), rows } });
+      if (res.success) App.toast('保存しました。');
+      else alert('保存に失敗しました：' + (res.message || '不明'));
+    } catch (e) {
+      alert('通信エラーが発生しました。');
+    } finally { App.loading(false); }
+  }
+
+  await render();
+})();
+</script>
+</body>
+</html>

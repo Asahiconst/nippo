@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>社員リスト - 日報システム</title>
+<link rel="stylesheet" href="/shared/style.css">
+</head>
+<body>
+<div id="loading"><div class="spinner"></div></div>
+<div id="header-area"></div>
+<div id="contents" style="max-width:820px; margin:0 auto;">
+<section id="view-employees">
+  <h2 class="page-title">社員リスト</h2>
+  <table class="emp-table">
+    <thead><tr><th style="width:110px;">社員ID</th><th style="width:160px;">氏名</th><th style="width:140px;">所属</th></tr></thead>
+    <tbody id="emp-body"></tbody>
+  </table>
+  <div style="margin-top:24px;"><button class="btn-back" onclick="location.href='/top.html'">＜ トップに戻る</button></div>
+</section>
+</div>
+<script src="/shared/app.js"></script>
+<script>
+(async function () {
+  const user = await App.requireAuth('employees');
+  if (!user) return;
+  App.loading(true);
+  try {
+    const users = await App.api('users');
+    document.getElementById('emp-body').innerHTML = users.map(u =>
+      `<tr><td>${App.escapeHtml(u.id)}</td><td>${App.escapeHtml(u.name)}</td><td>${App.escapeHtml(u.busho)}</td></tr>`
+    ).join('');
+  } finally { App.loading(false); }
+})();
+</script>
+</body>
+</html>

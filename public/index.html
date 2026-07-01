@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ログイン - 旭建設株式会社 日報システム</title>
+<link rel="stylesheet" href="/shared/style.css">
+</head>
+<body>
+<div id="loading"><div class="spinner"></div></div>
+<div id="view-login">
+  <div class="logo-container"><span class="logo">旭建設株式会社</span></div>
+  <div class="box">
+    <h2>日報システム ログイン</h2>
+    <div class="err" id="err"></div>
+    <form id="login-form">
+      <div class="form-group">
+        <label>社員ID</label>
+        <input type="text" id="login-id" autocomplete="username" required>
+      </div>
+      <div class="form-group">
+        <label>パスワード</label>
+        <input type="password" id="login-pass" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="btn" style="width:100%;">ログイン</button>
+    </form>
+  </div>
+</div>
+<script src="/shared/app.js"></script>
+<script>
+(async function () {
+  // 既にログイン済みならトップへ
+  try {
+    const res = await App.api('me');
+    if (res && res.success) { location.href = '/top.html'; return; }
+  } catch (e) { /* 未ログイン：ログイン画面を表示 */ }
+
+  document.getElementById('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = document.getElementById('login-id').value.trim();
+    const pass = document.getElementById('login-pass').value;
+    const errEl = document.getElementById('err');
+    errEl.textContent = '';
+    App.loading(true);
+    try {
+      const res = await App.api('login', { method: 'POST', body: { id, password: pass } });
+      if (res.success) {
+        location.href = '/top.html';
+      } else {
+        errEl.textContent = res.message || 'ログインに失敗しました。';
+      }
+    } catch (err) {
+      errEl.textContent = '通信エラーが発生しました。';
+    } finally {
+      App.loading(false);
+    }
+  });
+})();
+</script>
+</body>
+</html>

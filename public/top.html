@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>トップ - 日報システム</title>
+<link rel="stylesheet" href="/shared/style.css">
+</head>
+<body>
+<div id="loading"><div class="spinner"></div></div>
+<div id="header-area"></div>
+<div id="contents">
+  <div class="msg-banner" id="msg-top"></div>
+  <p class="notice-text">日付や対象月をクリックすると詳細を確認できます。</p>
+  <div class="grid-container">
+    <div class="column-box">
+      <div class="column-title">業務改善日報</div>
+      <button class="btn-neutral" onclick="location.href='/report-gyoumu.html'">＋ 新規作成</button>
+      <table class="report-table"><tbody id="col-gyoumu"></tbody></table>
+    </div>
+    <div class="column-box">
+      <div class="column-title">現場管理日報</div>
+      <button class="btn-neutral" onclick="location.href='/report-genba.html'">＋ 新規作成</button>
+      <table class="report-table"><tbody id="col-genba"></tbody></table>
+    </div>
+    <div class="column-box">
+      <div class="column-title">G-POP</div>
+      <button class="btn-neutral" onclick="location.href='/report-gpop.html'">＋ 新規作成</button>
+      <table class="report-table"><tbody id="col-gpop"></tbody></table>
+    </div>
+    <div class="column-box">
+      <div class="column-title">出勤簿</div>
+      <button class="btn-neutral" onclick="location.href='/shukkan.html'">＋ 新規作成</button>
+      <table class="report-table"><tbody id="col-shukkan"></tbody></table>
+    </div>
+    <div class="column-box">
+      <div class="column-title">運転日報</div>
+      <button class="btn-neutral" onclick="location.href='/unten.html'">＋ 新規作成</button>
+      <table class="report-table"><tbody id="col-unten"></tbody></table>
+    </div>
+  </div>
+</div>
+<script src="/shared/app.js"></script>
+<script>
+(async function () {
+  const user = await App.requireAuth('top');
+  if (!user) return;
+  loadReportColumn('gyoumu', 'col-gyoumu', 'gyoumu/dates');
+  loadReportColumn('genba', 'col-genba', 'genba/dates');
+  loadReportColumn('gpop', 'col-gpop', 'gpop/dates');
+  loadMonthColumn('shukkan', 'col-shukkan', 'shukkan/months');
+  loadMonthColumn('unten', 'col-unten', 'unten/months');
+
+  async function loadReportColumn(type, bodyId, endpoint) {
+    const body = document.getElementById(bodyId);
+    body.innerHTML = '<tr class="header-row"><th>日付</th></tr><tr><td class="empty-message">読み込み中...</td></tr>';
+    try {
+      const list = await App.api(`${endpoint}?empId=${encodeURIComponent(user.id)}`);
+      let html = '<tr class="header-row"><th>日付</th></tr>';
+      if (!list.length) {
+        html += '<tr><td class="empty-message">記入した日報はありません</td></tr>';
+      } else {
+        list.forEach(it => {
+          html += `<tr><th class="td-date">
+            <span class="date-link" onclick="location.href='/detail.html?type=${type}&date=${it.dateKey}&scope=mine'">${App.escapeHtml(it.dateLabel)}</span>
+            <span class="td-actions">
+              <button class="btn-copy" onclick="location.href='/report-${type}.html?copyFrom=${it.dateKey}'">コピーして作成</button>
+              <button class="btn-del-sm" onclick="delReport('${type}','${it.dateKey}','${bodyId}','${endpoint}')">削除</button>
+            </span></th></tr>`;
+        });
+      }
+      body.innerHTML = html;
+    } catch (e) {
+      body.innerHTML = '<tr class="header-row"><th>日付</th></tr><tr><td class="empty-message">取得に失敗しました</td></tr>';
+    }
+  }
+
+  async function loadMonthColumn(type, bodyId, endpoint) {
+    const body = document.getElementById(bodyId);
+    body.innerHTML = '<tr class="header-row"><th>対象月</th></tr><tr><td class="empty-message">読み込み中...</td></tr>';
+    try {
+      const list = await App.api(`${endpoint}?empId=${encodeURIComponent(user.id)}`);
+      let html = '<tr class="header-row"><th>対象月</th></tr>';
+      if (!list.length) {
+        html += '<tr><td class="empty-message">入力した日報はありません</td></tr>';
+      } else {
+        list.forEach(it => {
+          const km = (type === 'unten') ? ` <span class="km-total">[合計: ${it.km || 0} km]</span>` : '';
+          html += `<tr><th class="td-date">
+            <span class="td-main"><span class="date-link" onclick="location.href='/${type}.html?ym=${it.ym}'">${App.escapeHtml(it.label)}</span>${km}</span>
+            <span class="td-actions"><button class="btn-del-sm" onclick="delMonth('${type}','${it.ym}','${bodyId}','${endpoint}')">削除</button></span>
+          </th></tr>`;
+        });
+      }
+      body.innerHTML = html;
+    } catch (e) {
+      body.innerHTML = '<tr class="header-row"><th>対象月</th></tr><tr><td class="empty-message">取得に失敗しました</td></tr>';
+    }
+  }
+
+  window.delReport = async function (type, dateKey, bodyId, endpoint) {
+    if (!confirm(dateKey + ' の日報を削除します。よろしいですか？')) return;
+    App.loading(true);
+    try {
+      await App.api(`${type}?date=${dateKey}`, { method: 'DELETE' });
+      loadReportColumn(type, bodyId, endpoint);
+    } finally { App.loading(false); }
+  };
+  window.delMonth = async function (type, ym, bodyId, endpoint) {
+    if (!confirm(ym + ' 分を削除します。よろしいですか？')) return;
+    App.loading(true);
+    try {
+      await App.api(`${type}?ym=${ym}`, { method: 'DELETE' });
+      loadMonthColumn(type, bodyId, endpoint);
+    } finally { App.loading(false); }
+  };
+})();
+</script>
+</body>
+</html>

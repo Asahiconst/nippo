@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>メッセージ表示 - 日報システム</title>
+<link rel="stylesheet" href="/shared/style.css">
+</head>
+<body>
+<div id="loading"><div class="spinner"></div></div>
+<div id="header-area"></div>
+<div id="contents">
+<section id="view-message">
+  <h2 class="page-title">メッセージ表示（トップ・カレンダー上部に表示）</h2>
+  <div style="margin-bottom:14px;"><button class="btn-back" onclick="location.href='/admin.html'">＜ 管理者メニュー</button></div>
+  <div class="msg-edit-wrap">
+    <div class="msg-toolbar">
+      <button type="button" class="mt-btn" id="mb-bold" style="font-weight:bold;">B</button>
+      <button type="button" class="mt-btn" id="mb-italic" style="font-style:italic;">I</button>
+      <button type="button" class="mt-btn" id="mb-underline" style="text-decoration:underline;">U</button>
+      <select class="mt-sel" id="mb-size">
+        <option value="">文字サイズ</option>
+        <option value="2">小</option><option value="3">標準</option><option value="5">大</option><option value="7">特大</option>
+      </select>
+      文字色 <input type="color" id="mb-color" value="#e53935">
+      背景 <input type="color" id="mb-bg" value="#fff7e6">
+      <button type="button" class="mt-btn mt-btn-wide" id="mb-clear">書式解除</button>
+    </div>
+    <div id="msg-editor" class="msg-editor" contenteditable="true"></div>
+    <div style="margin-top:14px;">
+      <button class="btn" id="btn-save-msg">保存して表示</button>
+      <button class="btn-back" style="margin-left:6px;" id="btn-clear-msg">メッセージを消す</button>
+    </div>
+    <p style="color:#777; font-size:13px; margin-top:10px;">例：「15日までに出勤簿を提出してください」など。トップページ・業務改善日報カレンダー・現場管理日報カレンダーの上部に表示されます。</p>
+  </div>
+</section>
+</div>
+<script src="/shared/app.js"></script>
+<script>
+(async function () {
+  const user = await App.requireAuth('admin', { adminOnly: true });
+  if (!user) return;
+
+  const editor = document.getElementById('msg-editor');
+  try {
+    const res = await App.api('settings/message');
+    editor.innerHTML = res.message || '';
+  } catch (e) {}
+
+  function cmd(name, val) { editor.focus(); try { document.execCommand(name, false, val || null); } catch (e) {} }
+  document.getElementById('mb-bold').addEventListener('click', () => cmd('bold'));
+  document.getElementById('mb-italic').addEventListener('click', () => cmd('italic'));
+  document.getElementById('mb-underline').addEventListener('click', () => cmd('underline'));
+  document.getElementById('mb-size').addEventListener('change', function () { cmd('fontSize', this.value); this.selectedIndex = 0; });
+  document.getElementById('mb-color').addEventListener('change', function () { cmd('foreColor', this.value); });
+  document.getElementById('mb-bg').addEventListener('change', function () { cmd('hiliteColor', this.value); });
+  document.getElementById('mb-clear').addEventListener('click', () => cmd('removeFormat'));
+
+  async function save() {
+    App.loading(true);
+    try {
+      const res = await App.api('settings/message', { method: 'POST', body: { html: editor.innerHTML } });
+      if (res.success) location.href = '/admin.html';
+      else alert('保存に失敗しました。');
+    } catch (e) {
+      alert('通信エラーが発生しました。');
+    } finally { App.loading(false); }
+  }
+  document.getElementById('btn-save-msg').addEventListener('click', save);
+  document.getElementById('btn-clear-msg').addEventListener('click', () => { editor.innerHTML = ''; save(); });
+})();
+</script>
+</body>
+</html>

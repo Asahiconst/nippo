@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>カレンダー - 日報システム</title>
+<link rel="stylesheet" href="/shared/style.css">
+</head>
+<body>
+<div id="loading"><div class="spinner"></div></div>
+<div id="header-area"></div>
+<div id="contents">
+  <div class="msg-banner" id="msg-cal"></div>
+  <h2 class="page-title" id="cal-page-title"></h2>
+  <div class="cal-head">
+    <button class="btn-back" id="cal-prev">＜ 前月</button>
+    <h3 id="cal-title"></h3>
+    <button class="btn-back" id="cal-next">翌月 ＞</button>
+  </div>
+  <div style="text-align:center; margin-bottom:16px;">
+    <button class="btn" id="cal-new">＋ 新規作成</button>
+    <button class="btn-back" onclick="location.href='/top.html'">トップへ戻る</button>
+  </div>
+  <div id="cal-container"><p style="text-align:center;color:#999;">読み込み中...</p></div>
+</div>
+<script src="/shared/app.js"></script>
+<script src="/shared/holidays.js"></script>
+<script src="/shared/calendar.js"></script>
+<script>
+(async function () {
+  const type = App.getParam('type') || 'gyoumu';
+  const TYPE_NAMES = { gyoumu: '業務改善日報', genba: '現場管理日報', gpop: 'G-POP' };
+  const navKey = type;
+  const user = await App.requireAuth(navKey);
+  if (!user) return;
+
+  document.getElementById('cal-page-title').textContent = TYPE_NAMES[type] || '';
+  document.getElementById('cal-new').addEventListener('click', () => { location.href = `/report-${type}.html`; });
+
+  const now = new Date();
+  let year = now.getFullYear(), month = now.getMonth() + 1;
+  let specialMap = {};
+
+  document.getElementById('cal-prev').addEventListener('click', () => { changeMonth(-1); });
+  document.getElementById('cal-next').addEventListener('click', () => { changeMonth(1); });
+
+  async function changeMonth(diff) {
+    month += diff;
+    if (month > 12) { month = 1; year++; } else if (month < 1) { month = 12; year--; }
+    await renderCal();
+  }
+
+  async function renderCal() {
+    document.getElementById('cal-title').textContent = `${year}年${month}月`;
+    const container = document.getElementById('cal-container');
+    container.innerHTML = '<p style="text-align:center;color:#999;">読み込み中...</p>';
+    let hasData = {};
+    try {
+      if (type === 'gyoumu') {
+        const days = await App.api(`gyoumu/month?year=${year}&month=${month}`);
+        days.forEach(d => { hasData[d] = true; });
+      } else if (type === 'gpop') {
+        const days = await App.api(`gpop/month?year=${year}&month=${month}`);
+        days.forEach(d => { hasData[d] = true; });
+      } else if (type === 'genba') {
+        hasData = await App.api(`genba/sites?year=${year}&month=${month}`);
+      }
+    } catch (e) { hasData = {}; }
+
+    CalUtil.render(container, year, month, hasData, specialMap, {
+      onDayClick: (dateKey) => { location.href = `/detail.html?type=${type}&date=${dateKey}`; }
+    });
+  }
+
+  const showMsg = (type === 'gyoumu' || type === 'genba');
+  const msgEl = document.getElementById('msg-cal');
+  if (!showMsg) msgEl.style.display = 'none';
+
+  specialMap = await HolidayUtil.loadSpecialMap();
+  await renderCal();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+node_modules/
+.wrangler/
+migration.sql
+*.log
+日報システム.xlsx

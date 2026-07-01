@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>システム管理 - 日報システム</title>
+<link rel="stylesheet" href="/shared/style.css">
+</head>
+<body>
+<div id="loading"><div class="spinner"></div></div>
+<div id="header-area"></div>
+<div id="contents">
+<section id="view-sysadmin">
+  <h2 class="page-title">システム管理（ユーザー情報）</h2>
+  <div style="margin-bottom:14px;"><button class="btn-back" onclick="location.href='/admin.html'">＜ 管理者メニュー</button></div>
+  <div class="sys-wrap">
+    <div class="sys-list">
+      <table class="sys-table">
+        <thead><tr><th style="width:64px;">並び</th><th>社員ID</th><th>氏名</th><th>所属</th><th>役割</th><th style="width:120px;">操作</th></tr></thead>
+        <tbody id="sys-user-body"></tbody>
+      </table>
+    </div>
+    <div class="sys-form">
+      <h3 id="sys-form-title" style="margin-top:0;color:var(--brand);">ユーザー追加</h3>
+      <div class="err" id="sys-err"></div>
+      <div class="form-group"><label>社員ID</label><input type="text" id="su-id"></div>
+      <div class="form-group"><label>パスワード <span id="su-pass-note" style="font-size:11px;color:#888;"></span></label><input type="text" id="su-pass"></div>
+      <div class="form-group"><label>氏名</label><input type="text" id="su-name"></div>
+      <div class="form-group"><label>所属</label><input type="text" id="su-busho"></div>
+      <div class="form-group"><label>役割</label><select id="su-role"><option>一般ユーザー</option><option>管理者</option></select></div>
+      <button class="btn" id="btn-save-user">保存</button>
+      <button class="btn-back" style="margin-left:6px;" id="btn-reset-user">クリア（新規）</button>
+    </div>
+  </div>
+
+  <h3 class="page-title" style="font-size:18px; margin-top:34px;">特別日の登録（社内休日・有給取得奨励日）</h3>
+  <div class="sys-wrap">
+    <div class="sys-list">
+      <table class="sys-table">
+        <thead><tr><th style="width:130px;">日付</th><th style="width:140px;">種別</th><th>名称</th><th style="width:80px;">操作</th></tr></thead>
+        <tbody id="special-day-body"></tbody>
+      </table>
+    </div>
+    <div class="sys-form">
+      <h3 style="margin-top:0; color:var(--brand);">特別日を追加</h3>
+      <div class="err" id="sp-err"></div>
+      <div class="form-group"><label>日付</label><input type="date" id="sp-date"></div>
+      <div class="form-group"><label>種別</label>
+        <select id="sp-type"><option value="holiday">社内休日（赤）</option><option value="pto">有給取得奨励日（薄黄色）</option></select>
+      </div>
+      <div class="form-group"><label>名称</label><input type="text" id="sp-name" placeholder="例：創立記念日／有給奨励日"></div>
+      <button class="btn" id="btn-add-special">追加</button>
+    </div>
+  </div>
+</section>
+</div>
+<script src="/shared/app.js"></script>
+<script>
+(async function () {
+  const user = await App.requireAuth('admin', { adminOnly: true });
+  if (!user) return;
+
+  const esc = App.escapeHtml;
+  let sysEditingId = null;
+  let draggedId = null;
+
+  async function loadUsers() {
+    resetForm();
+    const body = document.getElementById('sys-user-body');
+    body.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;">読み込み中...</td></tr>';
+    try {
+      const list = await App.api('users/full');
+      if (!list.length) { body.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;">ユーザーがいません</td></tr>'; return; }
+      body.innerHTML = list.map(u => `
+        <tr draggable="true" data-uid="${esc(u.id)}">
+          <td class="drag-handle" title="ドラッグで並び替え">⠿</td>
+          <td>${esc(u.id)}</td><td>${esc(u.name)}</td><td>${esc(u.busho)}</td><td>${esc(u.role)}</td>
+          <td><button class="btn-sm btn-edit" data-edit="${esc(u.id)}">編集</button>
+          <button class="btn-sm btn-del" data-del="${esc(u.id)}">削除</button></td>
+        </tr>`).join('');
+      const byId = {}; list.forEach(u => { byId[u.id] = u; });
+      body.querySelectorAll('[data-edit]').forEach(btn => btn.addEventListener('click', () => editUser(byId[btn.dataset.edit])));
+      body.querySelectorAll('[data-del]').forEach(btn => btn.addEventListener('click', () => deleteUserRow(btn.dataset.del)));
+      bindDrag(body);
+    } catch (e) {
+      body.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;">取得に失敗しました</td></tr>';
+    }
+  }
+
+  function bindDrag(body) {
+    body.querySelectorAll('tr[draggable]').forEach(tr => {
+      tr.addEventListener('dragstart', () => { draggedId = tr.dataset.uid; });
+      tr.addEventListener('dragend', () => { draggedId = null; body.querySelectorAll('tr.drag-over').forEach(t => t.classList.remove('drag-over')); });
+      tr.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        body.querySelectorAll('tr.drag-over').forEach(t => t.classList.remove('drag-over'));
+        tr.classList.add('drag-over');
+      });
+      tr.addEventListener('dragleave', () => tr.classList.remove('drag-over'));
+      tr.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        const targetId = tr.dataset.uid;
+        if (!draggedId || draggedId === targetId) return;
+        const ids = Array.prototype.map.call(body.querySelectorAll('tr'), t => t.dataset.uid);
+        ids.splice(ids.indexOf(draggedId), 1);
+        ids.splice(ids.indexOf(targetId), 0, draggedId);
+        App.loading(true);
+        try {
+          const res = await App.api('users/reorder', { method: 'POST', body: { ids } });
+          if (res.success) loadUsers(); else alert(res.message || '並べ替えに失敗しました。');
+        } finally { App.loading(false); }
+      });
+    });
+  }
+
+  function resetForm() {
+    sysEditingId = null;
+    document.getElementById('sys-form-title').textContent = 'ユーザー追加';
+    document.getElementById('sys-err').textContent = '';
+    ['su-id', 'su-pass', 'su-name', 'su-busho'].forEach(id => { document.getElementById(id).value = ''; });
+    document.getElementById('su-role').value = '一般ユーザー';
+    document.getElementById('su-pass-note').textContent = '';
+  }
+  function editUser(u) {
+    sysEditingId = u.id;
+    document.getElementById('sys-form-title').textContent = 'ユーザー編集';
+    document.getElementById('sys-err').textContent = '';
+    document.getElementById('su-id').value = u.id;
+    document.getElementById('su-pass').value = '';
+    document.getElementById('su-pass-note').textContent = '（変更時のみ入力）';
+    document.getElementById('su-name').value = u.name;
+    document.getElementById('su-busho').value = u.busho;
+    document.getElementById('su-role').value = u.role || '一般ユーザー';
+    window.scrollTo(0, 0);
+  }
+  async function saveUser() {
+    const u = {
+      id: document.getElementById('su-id').value.trim(),
+      password: document.getElementById('su-pass').value,
+      name: document.getElementById('su-name').value.trim(),
+      busho: document.getElementById('su-busho').value.trim(),
+      role: document.getElementById('su-role').value
+    };
+    const errEl = document.getElementById('sys-err');
+    if (!u.id) { errEl.textContent = '社員IDを入力してください。'; return; }
+    if (!sysEditingId && !u.password) { errEl.textContent = '新規はパスワードを入力してください。'; return; }
+    App.loading(true);
+    try {
+      const res = sysEditingId
+        ? await App.api(`users/${encodeURIComponent(sysEditingId)}`, { method: 'PUT', body: u })
+        : await App.api('users', { method: 'POST', body: u });
+      if (res.success) loadUsers();
+      else errEl.textContent = res.message || '保存に失敗しました。';
+    } catch (e) {
+      errEl.textContent = '通信エラーが発生しました。';
+    } finally { App.loading(false); }
+  }
+  async function deleteUserRow(id) {
+    if (!confirm(`社員ID「${id}」を削除しますか？`)) return;
+    App.loading(true);
+    try {
+      const res = await App.api(`users/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      if (res.success) loadUsers(); else alert(res.message || '削除に失敗しました。');
+    } finally { App.loading(false); }
+  }
+  document.getElementById('btn-save-user').addEventListener('click', saveUser);
+  document.getElementById('btn-reset-user').addEventListener('click', resetForm);
+
+  // ----- 特別日 -----
+  async function loadSpecialDays() {
+    const body = document.getElementById('special-day-body');
+    body.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999;">読み込み中...</td></tr>';
+    try {
+      const list = await App.api('special-days');
+      if (!list.length) { body.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999;">登録なし</td></tr>'; return; }
+      body.innerHTML = list.map(s => {
+        const t = s.type === 'pto' ? '<span style="color:#b8860b;">有給取得奨励日</span>' : '<span style="color:#e53935;">社内休日</span>';
+        return `<tr><td>${esc(s.date)}</td><td>${t}</td><td>${esc(s.name)}</td><td><button class="btn-sm btn-del" data-del="${esc(s.date)}">削除</button></td></tr>`;
+      }).join('');
+      body.querySelectorAll('[data-del]').forEach(btn => btn.addEventListener('click', () => deleteSpecial(btn.dataset.del)));
+    } catch (e) {
+      body.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999;">取得に失敗しました</td></tr>';
+    }
+  }
+  async function addSpecial() {
+    const date = document.getElementById('sp-date').value;
+    const type = document.getElementById('sp-type').value;
+    const name = document.getElementById('sp-name').value.trim();
+    const errEl = document.getElementById('sp-err');
+    if (!date) { errEl.textContent = '日付を入力してください。'; return; }
+    App.loading(true);
+    try {
+      const res = await App.api('special-days', { method: 'POST', body: { date, type, name } });
+      if (res.success) {
+        document.getElementById('sp-date').value = ''; document.getElementById('sp-name').value = ''; errEl.textContent = '';
+        loadSpecialDays();
+      } else { errEl.textContent = '追加に失敗しました。'; }
+    } catch (e) {
+      errEl.textContent = '通信エラーが発生しました。';
+    } finally { App.loading(false); }
+  }
+  async function deleteSpecial(date) {
+    if (!confirm(date + ' を削除しますか？')) return;
+    App.loading(true);
+    try { await App.api(`special-days/${encodeURIComponent(date)}`, { method: 'DELETE' }); loadSpecialDays(); }
+    finally { App.loading(false); }
+  }
+  document.getElementById('btn-add-special').addEventListener('click', addSpecial);
+
+  loadUsers();
+  loadSpecialDays();
+})();
+</script>
+</body>
+</html>

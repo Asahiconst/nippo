@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>G-POP - 日報システム</title>
+<link rel="stylesheet" href="/shared/style.css">
+</head>
+<body>
+<div id="loading"><div class="spinner"></div></div>
+<div id="header-area"></div>
+<div id="contents">
+<section id="view-gpop">
+  <div class="gpop-titlebar">G-POP作成</div>
+  <table class="gpop-meta">
+    <tr><td class="lbl">記録者 / 所属</td><td class="val"><span class="rec" id="gpop-rec"></span></td></tr>
+    <tr><td class="lbl">記録日</td><td class="val"><input type="date" id="gpop-date"></td></tr>
+  </table>
+  <div class="gpop-container">
+    <div class="gpop-goal-head">Goal（ゴール）</div>
+    <div class="gpop-goal-body"><textarea id="gp-goal"></textarea></div>
+    <div class="gpop-grid">
+      <div class="gpop-card"><div class="gpop-card-head"><div class="t">Pre</div><div class="s">（Goal実現のための計画）※Goal番号を併記</div></div><textarea id="gp-pre"></textarea></div>
+      <div class="gpop-card"><div class="gpop-card-head"><div class="t">On</div><div class="s">（Preの実施結果・評価）〇/△/× で記載</div></div><textarea id="gp-on"></textarea></div>
+      <div class="gpop-card"><div class="gpop-card-head"><div class="t">Post</div><div class="s">（振り返り・Onからの学び）</div></div><textarea id="gp-post"></textarea></div>
+      <div class="gpop-card"><div class="gpop-card-head"><div class="t">Next Pre</div><div class="s">（次のアクション・次回のPre）</div></div><textarea id="gp-nextpre"></textarea></div>
+    </div>
+  </div>
+  <div class="gpop-submit-wrap"><button class="btn-gpop" id="btn-save">登 録</button></div>
+  <div style="text-align:center; margin-top:12px;"><button class="btn-back" onclick="location.href='/top.html'">＜ トップに戻る</button></div>
+</section>
+</div>
+<script src="/shared/app.js"></script>
+<script>
+(async function () {
+  const user = await App.requireAuth('gpop');
+  if (!user) return;
+
+  const GOAL_TPL = '① 人生をかけて実現したいゴール\n\n② 今年のゴール\n\n③ 今月のゴール\n\n④ その他';
+  const LIST_TPL = '①\n②\n③\n④\n⑤';
+
+  const dateParam = App.getParam('date');
+  const copyFrom = App.getParam('copyFrom');
+  document.getElementById('gpop-rec').textContent = `${user.name}/${user.busho}`;
+  document.getElementById('gpop-date').value = dateParam || App.todayKey();
+
+  let prefill = null;
+  const sourceDate = dateParam || copyFrom;
+  if (sourceDate) {
+    App.loading(true);
+    try { prefill = await App.api(`gpop/mine?empId=${encodeURIComponent(user.id)}&date=${sourceDate}`); }
+    finally { App.loading(false); }
+  }
+
+  document.getElementById('gp-goal').value = (prefill && prefill.goal) || GOAL_TPL;
+  const map = { 'gp-pre': 'pre', 'gp-on': 'on', 'gp-post': 'post', 'gp-nextpre': 'nextPre' };
+  Object.keys(map).forEach(id => {
+    document.getElementById(id).value = (prefill && prefill[map[id]]) || LIST_TPL;
+  });
+  document.querySelectorAll('#view-gpop textarea').forEach(App.autoGrow);
+
+  document.getElementById('btn-save').addEventListener('click', async () => {
+    const dateKey = document.getElementById('gpop-date').value;
+    if (!dateKey) { alert('記録日を入力してください。'); return; }
+    const fields = {
+      goal: document.getElementById('gp-goal').value,
+      pre: document.getElementById('gp-pre').value,
+      on: document.getElementById('gp-on').value,
+      post: document.getElementById('gp-post').value,
+      nextPre: document.getElementById('gp-nextpre').value
+    };
+    App.loading(true);
+    try {
+      const res = await App.api('gpop', { method: 'POST', body: { dateKey, fields } });
+      if (res.success) location.href = '/top.html';
+      else alert('保存に失敗しました：' + (res.message || '不明'));
+    } catch (e) {
+      alert('通信エラーが発生しました。');
+    } finally { App.loading(false); }
+  });
+})();
+</script>
+</body>
+</html>

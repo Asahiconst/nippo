@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>管理者専用 - 日報システム</title>
+<link rel="stylesheet" href="/shared/style.css">
+</head>
+<body>
+<div id="loading"><div class="spinner"></div></div>
+<div id="header-area"></div>
+<div id="contents">
+<section id="view-admin">
+  <h2 class="page-title">管理者専用</h2>
+  <div class="admin-menu">
+    <a href="/admin-users.html"><button class="btn admin-big">システム管理</button></a>
+    <a href="/admin-mgmt.html?type=shukkan"><button class="btn admin-big">出勤簿管理</button></a>
+    <a href="/admin-mgmt.html?type=unten"><button class="btn admin-big">運転日報管理</button></a>
+    <a href="/admin-message.html"><button class="btn admin-big">メッセージ表示</button></a>
+  </div>
+</section>
+</div>
+<script src="/shared/app.js"></script>
+<script>
+(async function () {
+  const user = await App.requireAuth('admin', { adminOnly: true });
+  if (!user) return;
+})();
+</script>
+</body>
+</html>

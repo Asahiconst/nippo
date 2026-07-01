@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>現場管理日報 - 日報システム</title>
+<link rel="stylesheet" href="/shared/style.css">
+</head>
+<body>
+<div id="loading"><div class="spinner"></div></div>
+<div id="header-area"></div>
+<div id="contents">
+<section id="view-genba">
+  <h2 class="page-title" style="border-color:var(--genba);">現場管理日報</h2>
+  <div class="genba-wrap">
+    <div class="genba-top">
+      <div class="genba-left">
+        <table class="genba-tbl">
+          <tr><td class="lbl">記録者</td><td class="val"><span class="genba-plain" id="genba-name"></span></td></tr>
+          <tr><td class="lbl">記録日</td><td class="val"><input type="date" id="genba-date" class="short"></td></tr>
+          <tr><td class="lbl">現場名<br><span style="font-size:11px;color:#ffd9d9;">※必須</span></td><td class="val"><input type="text" id="g-genbamei" placeholder="必須"></td></tr>
+          <tr><td class="lbl">施工管理</td><td class="val"><textarea class="h-m" id="g-sekou"></textarea></td></tr>
+          <tr><td class="lbl">概要</td><td class="val">
+            <p class="genba-note">※「現場事務所位置」で ゛ を使うと、コピーして新規作成時に概要が表示されません</p>
+            <textarea class="genba-template" id="g-gaiyou"></textarea>
+          </td></tr>
+          <tr><td class="lbl">作業内容</td><td class="val"><textarea class="h-l" id="g-sagyou"></textarea></td></tr>
+          <tr><td class="lbl">雨天時の<br>対応</td><td class="val"><input type="text" class="short" id="g-uten"></td></tr>
+          <tr><td class="lbl">進捗度</td><td class="val"><input type="text" class="short" id="g-shinchoku"></td></tr>
+          <tr><td class="lbl">労務管理</td><td class="val"><textarea class="h-l" id="g-roumu"></textarea></td></tr>
+          <tr><td class="lbl">資材及び<br>数量</td><td class="val"><textarea class="h-l" id="g-shizai"></textarea></td></tr>
+          <tr><td class="lbl">使用機械</td><td class="val"><textarea class="h-l" id="g-kikai"></textarea></td></tr>
+          <tr><td class="lbl">外注</td><td class="val"><textarea class="h-l" id="g-gaichu"></textarea></td></tr>
+        </table>
+      </div>
+      <div class="genba-right">
+        <div class="genba-bar">フロー図</div>
+        <div class="genba-panel"><textarea id="g-flow"></textarea></div>
+        <div class="genba-bar">画像登録</div>
+        <div class="genba-panel">
+          <p class="genba-note">既存の画像を残す場合は何もせず、差し替える場合はファイルを選択してください。「削除」で画像を消せます。</p>
+          <div class="img-grid" id="g-images"></div>
+        </div>
+      </div>
+    </div>
+    <div class="genba-bottom">
+      <div>
+        <h3 class="section-h">工程</h3>
+        <table class="genba-tbl">
+          <tr><td class="lbl">完成予定</td><td class="val"><input type="text" id="g-kansei"></td></tr>
+          <tr><td class="lbl">検査日</td><td class="val"><textarea class="h-m" id="g-kensa"></textarea></td></tr>
+          <tr><td class="lbl">バッファ色</td><td class="val">
+            <select id="g-buffer"><option value="">選択</option><option value="緑">緑</option><option value="黄">黄</option><option value="赤">赤</option></select>
+          </td></tr>
+          <tr><td class="lbl">余裕日数</td><td class="val"><input type="text" id="g-yoyu-days"></td></tr>
+          <tr><td class="lbl">余裕率</td><td class="val"><input type="text" id="g-yoyu-rate"></td></tr>
+          <tr><td class="lbl">残作業<br>日数</td><td class="val"><input type="text" id="g-zan"></td></tr>
+          <tr><td class="lbl">稼働日数</td><td class="val"><textarea class="h-m" id="g-kadou"></textarea></td></tr>
+        </table>
+      </div>
+      <div>
+        <h3 class="section-h">昨日の金の動き</h3>
+        <table class="money" id="money-table">
+          <thead><tr><th></th><th>昨日発生額</th><th>出来高累計 <span class="money-btns"><button type="button" id="btn-money-calc">計算</button><button type="button" id="btn-money-revert">戻る</button></span></th><th>予算額</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <p class="genba-hint">「昨日の発生額」を入力したら「累計計算ボタン」を押して下さい。</p>
+      </div>
+    </div>
+    <div style="margin-top:24px;">
+      <button class="btn-genba" id="btn-save">登録する</button>
+      <button class="btn-back" style="margin-left:8px;" onclick="location.href='/top.html'">キャンセル</button>
+    </div>
+  </div>
+</section>
+</div>
+<script src="/shared/app.js"></script>
+<script>
+(async function () {
+  const user = await App.requireAuth('genba');
+  if (!user) return;
+
+  const GAIYOU_TPL = '発注者　　　：\n担当課長　　：\n担当者　　　：\n契約金額　　：\n契約工期　　：\n現場事務所位置：';
+  const ID2KEY = { 'g-genbamei': 'genbamei', 'g-sekou': 'sekou', 'g-gaiyou': 'gaiyou', 'g-sagyou': 'sagyou',
+    'g-uten': 'uten', 'g-shinchoku': 'shinchoku', 'g-roumu': 'roumu', 'g-shizai': 'shizai', 'g-kikai': 'kikai',
+    'g-gaichu': 'gaichu', 'g-flow': 'flow', 'g-kansei': 'kansei', 'g-kensa': 'kensa', 'g-buffer': 'buffer',
+    'g-yoyu-days': 'yoyuDays', 'g-yoyu-rate': 'yoyuRate', 'g-zan': 'zan', 'g-kadou': 'kadou' };
+  const MONEY_ROWS = ['資材', '労務', '機械', '外注', '経費'];
+  let moneyLastAdded = {};
+
+  document.getElementById('genba-name').textContent = user.name;
+
+  const dateParam = App.getParam('date');
+  const copyFrom = App.getParam('copyFrom');
+  const copyFromSession = App.getParam('copyFromSession');
+  document.getElementById('genba-date').value = dateParam || App.todayKey();
+
+  let prefill = null;
+  if (copyFromSession) {
+    try { prefill = JSON.parse(sessionStorage.getItem('copyGenbaRecord') || 'null'); } catch (e) {}
+    sessionStorage.removeItem('copyGenbaRecord');
+  } else if (dateParam || copyFrom) {
+    App.loading(true);
+    try { prefill = await App.api(`genba/mine?empId=${encodeURIComponent(user.id)}&date=${dateParam || copyFrom}`); }
+    finally { App.loading(false); }
+  }
+  const isEdit = !!dateParam; // 編集（同日上書き）かどうか。コピー時は画像を引き継がない
+
+  Object.keys(ID2KEY).forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const key = ID2KEY[id];
+    if (prefill && prefill[key] != null && prefill[key] !== '') el.value = prefill[key];
+    else el.value = (id === 'g-gaiyou') ? GAIYOU_TPL : '';
+  });
+
+  // 画像スロット：編集時は既存画像を表示して保持、コピー・新規時は空
+  const existingImages = (isEdit && prefill && prefill.images) ? prefill.images : ['', '', '', '', '', '', '', ''];
+  const imgGrid = document.getElementById('g-images');
+  imgGrid.innerHTML = '';
+  for (let i = 0; i < 8; i++) {
+    const slot = document.createElement('div');
+    slot.className = 'img-slot';
+    const key = existingImages[i] || '';
+    slot.innerHTML = (key ? `<img src="/api/images/${key}" data-existing-key="${key}">` : '')
+      + `<input type="file" accept="image/*" data-slot="${i}">`
+      + (key ? `<label style="font-size:11px;"><input type="checkbox" class="del-img"> 削除</label>` : '');
+    imgGrid.appendChild(slot);
+  }
+
+  buildMoneyTable();
+  if (prefill && prefill.money) {
+    MONEY_ROWS.forEach(cat => {
+      const m = prefill.money[cat] || {};
+      const h = document.querySelector(`.m-hassei[data-row="${cat}"]`); if (h) h.value = m.h || '';
+      const r = document.querySelector(`.m-ruikei[data-row="${cat}"]`); if (r) r.value = m.r || '';
+      const y = document.querySelector(`.m-yosan[data-row="${cat}"]`); if (y) y.value = m.y || '';
+    });
+    moneySum();
+  }
+  document.querySelectorAll('#view-genba textarea').forEach(App.autoGrow);
+
+  function buildMoneyTable() {
+    const tb = document.querySelector('#money-table tbody');
+    let html = '';
+    MONEY_ROWS.forEach(name => {
+      html += `<tr><td class="row-lbl">${name}</td>`
+        + `<td><input type="number" class="m-hassei" data-row="${name}" placeholder="0"> 円</td>`
+        + `<td><input type="number" class="m-ruikei" data-row="${name}" placeholder="0"> 円</td>`
+        + `<td><input type="number" class="m-yosan" data-row="${name}" placeholder="0"> 円</td></tr>`;
+    });
+    html += `<tr><td class="row-lbl">工事原価</td>`
+      + `<td><input type="number" id="cost-hassei" value="0" readonly> 円</td>`
+      + `<td><input type="number" id="cost-ruikei" value="0" readonly> 円</td>`
+      + `<td><input type="number" id="cost-yosan" value="0" readonly> 円</td></tr>`;
+    tb.innerHTML = html;
+    tb.addEventListener('input', (e) => { if (e.target.tagName === 'INPUT') moneySum(); });
+    moneyLastAdded = {};
+    moneySum();
+  }
+  function moneySum() {
+    [['m-hassei', 'cost-hassei'], ['m-ruikei', 'cost-ruikei'], ['m-yosan', 'cost-yosan']].forEach(c => {
+      let sum = 0;
+      document.querySelectorAll('.' + c[0]).forEach(inp => { sum += Number(inp.value) || 0; });
+      document.getElementById(c[1]).value = sum;
+    });
+  }
+  document.getElementById('btn-money-calc').addEventListener('click', () => {
+    MONEY_ROWS.forEach(name => {
+      const hassei = document.querySelector(`.m-hassei[data-row="${name}"]`);
+      const ruikei = document.querySelector(`.m-ruikei[data-row="${name}"]`);
+      const add = Number(hassei.value) || 0;
+      ruikei.value = (Number(ruikei.value) || 0) + add;
+      moneyLastAdded[name] = add;
+    });
+    moneySum();
+  });
+  document.getElementById('btn-money-revert').addEventListener('click', () => {
+    MONEY_ROWS.forEach(name => {
+      const ruikei = document.querySelector(`.m-ruikei[data-row="${name}"]`);
+      const add = moneyLastAdded[name] || 0;
+      ruikei.value = (Number(ruikei.value) || 0) - add;
+      moneyLastAdded[name] = 0;
+    });
+    moneySum();
+  });
+
+  function gv(id) { const e = document.getElementById(id); return e ? e.value : ''; }
+  function qv(sel) { const e = document.querySelector(sel); return e ? e.value : ''; }
+
+  function readFile(input) {
+    return new Promise((resolve) => {
+      const f = input.files && input.files[0];
+      if (!f) { resolve(null); return; }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const res = String(reader.result);
+        resolve({ name: f.name, mimeType: f.type || 'image/jpeg', data: res.slice(res.indexOf(',') + 1) });
+      };
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(f);
+    });
+  }
+
+  document.getElementById('btn-save').addEventListener('click', async () => {
+    const dateKey = document.getElementById('genba-date').value;
+    if (!dateKey) { alert('記録日を入力してください。'); return; }
+    if (!gv('g-genbamei').trim()) { alert('現場名は必須項目です。入力してください。'); document.getElementById('g-genbamei').focus(); return; }
+
+    const data = {
+      genbamei: gv('g-genbamei'), sekou: gv('g-sekou'), gaiyou: gv('g-gaiyou'), sagyou: gv('g-sagyou'),
+      uten: gv('g-uten'), shinchoku: gv('g-shinchoku'), roumu: gv('g-roumu'), shizai: gv('g-shizai'),
+      kikai: gv('g-kikai'), gaichu: gv('g-gaichu'), flow: gv('g-flow'),
+      kansei: gv('g-kansei'), kensa: gv('g-kensa'), buffer: gv('g-buffer'),
+      yoyuDays: gv('g-yoyu-days'), yoyuRate: gv('g-yoyu-rate'), zan: gv('g-zan'), kadou: gv('g-kadou')
+    };
+    const money = {};
+    MONEY_ROWS.forEach(cat => {
+      money[cat] = { h: qv(`.m-hassei[data-row="${cat}"]`), r: qv(`.m-ruikei[data-row="${cat}"]`), y: qv(`.m-yosan[data-row="${cat}"]`) };
+    });
+    money['工事原価'] = { h: gv('cost-hassei'), r: gv('cost-ruikei'), y: gv('cost-yosan') };
+
+    App.loading(true);
+    try {
+      const slots = Array.from(imgGrid.querySelectorAll('.img-slot'));
+      const images = [];
+      for (const slot of slots) {
+        const fileInput = slot.querySelector('input[type=file]');
+        const del = slot.querySelector('.del-img');
+        const existingKey = slot.querySelector('img') ? slot.querySelector('img').getAttribute('data-existing-key') : '';
+        if (fileInput.files && fileInput.files[0]) {
+          const img = await readFile(fileInput);
+          const up = await App.api('genba/upload', { method: 'POST', body: { dateKey, slot: fileInput.dataset.slot, image: img } });
+          images.push(up.key || '');
+        } else if (del && del.checked) {
+          images.push('');
+        } else {
+          images.push(existingKey || '');
+        }
+      }
+      const res = await App.api('genba', { method: 'POST', body: { dateKey, data, money, images } });
+      if (res.success) location.href = '/top.html';
+      else alert('保存に失敗しました：' + (res.message || '不明'));
+    } catch (e) {
+      alert('通信エラーが発生しました。');
+    } finally {
+      App.loading(false);
+    }
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>日報詳細 - 日報システム</title>
+<link rel="stylesheet" href="/shared/style.css">
+</head>
+<body>
+<div id="loading"><div class="spinner"></div></div>
+<div id="header-area"></div>
+<div id="contents" style="max-width:1180px; margin:0 auto;">
+  <button class="btn-back" id="detail-back" style="margin-bottom:14px;">＜ 戻る</button>
+  <h2 class="page-title" id="detail-title"></h2>
+  <div id="detail-container"></div>
+</div>
+<script src="/shared/app.js"></script>
+<script src="/shared/reportview.js"></script>
+<script>
+(async function () {
+  const type = App.getParam('type') || 'gyoumu';
+  const date = App.getParam('date');
+  const scope = App.getParam('scope') || 'all'; // mine | all
+  const TYPE_NAMES = { gyoumu: '業務改善日報', genba: '現場管理日報', gpop: 'G-POP' };
+
+  const backHref = scope === 'mine' ? '/top.html' : `/calendar.html?type=${type}`;
+  document.getElementById('detail-back').addEventListener('click', () => { location.href = backHref; });
+
+  const navKey = scope === 'mine' ? 'top' : type;
+  const user = await App.requireAuth(navKey);
+  if (!user) return;
+
+  App.loading(true);
+  try {
+    if (type === 'genba') {
+      let records;
+      if (scope === 'mine') {
+        const rec = await App.api(`genba/mine?empId=${encodeURIComponent(user.id)}&date=${date}`);
+        records = rec ? [rec] : [];
+      } else {
+        records = await App.api(`genba/by-date?date=${date}`);
+        records = records.slice().sort((a, b) => (a.genbamei || '') < (b.genbamei || '') ? -1 : 1);
+      }
+      const label = records[0] ? records[0].dateLabel : date;
+      document.getElementById('detail-title').textContent = '';
+      if (scope === 'mine') {
+        document.getElementById('detail-container').innerHTML =
+          `<div style="margin-bottom:14px;"><button class="btn" onclick="location.href='/report-genba.html?date=${date}'">編集する</button> `
+          + `<button class="btn outline" onclick="location.href='/report-genba.html?copyFrom=${date}'">コピーして作成</button></div>`;
+        const wrap = document.createElement('div');
+        ReportView.renderGenbaList(wrap, label, records);
+        document.getElementById('detail-container').appendChild(wrap);
+      } else {
+        ReportView.renderGenbaList(document.getElementById('detail-container'), label, records);
+      }
+      return;
+    }
+
+    // gyoumu / gpop
+    let items = [];
+    let label = date;
+    if (scope === 'mine') {
+      if (type === 'gyoumu') {
+        const list = await App.api(`gyoumu/mine?empId=${encodeURIComponent(user.id)}&date=${date}`);
+        items = list.map(r => ({ name: r.name || user.name, busho: r.busho || user.busho, record: r }));
+        if (list[0]) label = list[0].dateLabel;
+      } else {
+        const rec = await App.api(`gpop/mine?empId=${encodeURIComponent(user.id)}&date=${date}`);
+        items = rec ? [{ name: rec.name || user.name, busho: rec.busho || user.busho, record: rec }] : [];
+        if (rec) label = rec.dateLabel;
+      }
+      document.getElementById('detail-title').textContent = `${label} の${TYPE_NAMES[type]}（自分）`;
+      const top = document.createElement('div');
+      top.style.marginBottom = '14px';
+      top.innerHTML = `<button class="btn" onclick="location.href='/report-${type}.html?date=${date}'">編集する</button> `
+        + `<button class="btn outline" onclick="location.href='/report-${type}.html?copyFrom=${date}'">コピーして作成</button>`;
+      const c = document.getElementById('detail-container');
+      c.innerHTML = '';
+      c.appendChild(top);
+      renderItems(c, items, label);
+    } else {
+      const endpoint = type === 'gyoumu' ? 'gyoumu/by-date' : 'gpop/by-date';
+      const subs = await App.api(`${endpoint}?date=${date}`);
+      if (subs[0]) label = subs[0].dateLabel;
+      const byId = {};
+      subs.forEach(s => { if (!byId[s.empId]) byId[s.empId] = s; });
+      let allUsers = [];
+      try { allUsers = await App.api('users'); } catch (e) {}
+      if (allUsers.length) {
+        items = allUsers.map(u => ({ name: u.name, busho: u.busho, record: byId[u.id] || null }));
+        subs.forEach(s => { if (!allUsers.some(u => u.id === s.empId)) items.push({ name: s.name, busho: s.busho, record: s }); });
+      } else {
+        items = subs.map(s => ({ name: s.name, busho: s.busho, record: s }));
+      }
+      document.getElementById('detail-title').textContent = `${label} の${TYPE_NAMES[type]}（全社員）`;
+      renderItems(document.getElementById('detail-container'), items, label);
+    }
+  } catch (e) {
+    document.getElementById('detail-container').innerHTML = '<p style="color:#999;">取得に失敗しました。</p>';
+  } finally {
+    App.loading(false);
+  }
+
+  function renderItems(container, items, label) {
+    if (!items.length) {
+      container.insertAdjacentHTML('beforeend', '<p style="color:#999;">この日に登録された日報はありません。</p>');
+      return;
+    }
+    container.insertAdjacentHTML('beforeend', items.map(it =>
+      ReportView.recordCardHtml(type, it.name, it.busho, (it.record && it.record.dateLabel) || '', it.record)
+    ).join(''));
+  }
+})();
+</script>
+</body>
+</html>
