@@ -3,4 +3,6 @@ node_modules/
 migration.sql
 *.log
 日報システム.xlsx
+akugare_daily.sql
+legacy_import.sql
 .claude/
